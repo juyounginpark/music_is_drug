@@ -90,104 +90,6 @@ body {
 	z-index: 1;
 }
 		</style>
-		<script>
-/* Installed before Godot creates its context. Resume must run in a DOM gesture,
-   rather than waiting for a GDScript frame after the browser's activation ends. */
-(() => {
-  'use strict';
-  const contexts = new Set();
-  let gameReady = false;
-  let hasPlayed = false;
-  let primed = false;
-  let gate;
-  let pausedAt = performance.now();
-  let pausedTotal = 0;
-  function routePlayback() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (_) {}
-  }
-  routePlayback();
-  const running = () => contexts.size > 0 && [...contexts].every(c => c.state === 'running');
-  const ready = () => running() && !document.hidden;
-  function pausedSeconds() {
-    return pausedTotal + (pausedAt === null ? 0 : (performance.now() - pausedAt) / 1000);
-  }
-  function refresh() {
-    const canPlay = ready();
-    if (!canPlay && pausedAt === null) pausedAt = performance.now();
-    if (canPlay && pausedAt !== null) {
-      pausedTotal += (performance.now() - pausedAt) / 1000;
-      pausedAt = null;
-    }
-    if (!gameReady || !gate) return;
-    gate.hidden = canPlay;
-    gate.textContent = hasPlayed ? 'TAP TO RESUME' : 'TAP TO PLAY';
-    if (canPlay) hasPlayed = true;
-  }
-  const constructors = new Map();
-  for (const name of ['AudioContext', 'webkitAudioContext']) {
-    const Native = window[name];
-    if (!Native) continue;
-    if (!constructors.has(Native)) {
-      constructors.set(Native, class extends Native {
-        constructor(...args) {
-          super(...args);
-          contexts.add(this);
-          this.addEventListener('statechange', refresh);
-          refresh();
-        }
-      });
-    }
-    window[name] = constructors.get(Native);
-  }
-  function unlock() {
-    // Supported iOS versions can route game audio through the playback category.
-    routePlayback();
-    for (const context of contexts) {
-      if (context.state === 'closed') continue;
-      try {
-        context.resume().then(refresh).catch(refresh);
-        // One silent frame primes iOS output without an audible click.
-        const source = context.createBufferSource();
-        source.buffer = context.createBuffer(1, 1, context.sampleRate);
-        source.connect(context.destination);
-        source.onended = () => source.disconnect();
-        source.start(0);
-        primed = true;
-      } catch (_) { /* Another trusted gesture can retry an interrupted context. */ }
-    }
-    refresh();
-  }
-  for (const event of ['pointerdown', 'touchstart', 'touchend', 'keydown']) {
-    window.addEventListener(event, () => { if (!primed || !running()) unlock(); }, {capture: true, passive: true});
-  }
-  document.addEventListener('visibilitychange', refresh);
-  window.StringArtAudio = {
-    isRunning: ready,
-    pausedSeconds,
-    unlock,
-    setGameReady() {
-      gameReady = true;
-      gate = document.createElement('button');
-      gate.id = 'audio-start';
-      gate.type = 'button';
-      gate.setAttribute('aria-label', 'Start game audio');
-      Object.assign(gate.style, {
-        position: 'fixed', inset: '0', width: '100%', height: '100%',
-        zIndex: '10', border: '0', color: '#f8d78a', background: '#061f29e8',
-        font: 'bold 22px monospace', letterSpacing: '3px', touchAction: 'none',
-        cursor: 'pointer'
-      });
-      // The start/resume tap activates sound; it must not also connect a pin.
-      for (const event of ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'click', 'keydown']) {
-        gate.addEventListener(event, e => { e.preventDefault(); e.stopPropagation(); unlock(); }, {passive: false});
-      }
-      document.body.appendChild(gate);
-      refresh();
-    }
-  };
-})();
-
-</script>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="STRING ART.icon.png" />
 <link rel="apple-touch-icon" href="STRING ART.apple-touch-icon.png"/>
 
@@ -209,7 +111,7 @@ body {
 
 		<script src="STRING ART.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"STRING ART","experimentalVK":false,"fileSizes":{"STRING ART.pck":11181116,"STRING ART.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"STRING ART","experimentalVK":false,"fileSizes":{"STRING ART.pck":11209048,"STRING ART.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -309,7 +211,6 @@ const engine = new Engine(GODOT_CONFIG);
 			},
 		}).then(() => {
 			setStatusMode('hidden');
-			window.StringArtAudio.setGameReady();
 		}, displayFailureNotice);
 	}
 }());
